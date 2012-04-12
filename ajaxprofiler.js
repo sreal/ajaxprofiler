@@ -10,6 +10,8 @@ Base: http://msdn.microsoft.com/en-us/library/bb386417.aspx
 var AjaxProfiler = (function () {
 
     var instantiated;
+    var timingMode;
+
     function clear() {
         $get('ClientEvents').innerHTML = "";
     }
@@ -42,6 +44,16 @@ var AjaxProfiler = (function () {
         _toggle.type = "button";
         _toggle.value = "toggle";
 
+        // timing button
+        var _timing = document.createElement('input');
+        _timing.onclick = function () {
+            AjaxProfiler.toggleTimingMode();
+        };
+        _timing.type = "button";
+        _timing.value = "timing";
+
+
+
         // all wrapper
         var _wrapper = document.createElement('div');
         _wrapper.id = "ajaxprofiler_wrapper";
@@ -50,6 +62,7 @@ var AjaxProfiler = (function () {
         _wrapper.appendChild(_visible_wrapper);
         _wrapper.appendChild(_toggle);
         _wrapper.appendChild(_clear);
+        _wrapper.appendChild(_timing);
 
         document.body.insertBefore(_wrapper, document.body.firstChild);
     }
@@ -64,66 +77,79 @@ var AjaxProfiler = (function () {
 
         // Application event handlers for component developers.
         function ApplicationInit(sender) {
-            var prm = Sys.WebForms.PageRequestManager.getInstance();
-            if (!prm.get_isInAsyncPostBack()) {
-                prm.add_initializeRequest(InitializeRequest);
-                prm.add_beginRequest(BeginRequest);
-                prm.add_pageLoading(PageLoading);
-                prm.add_pageLoaded(PageLoaded);
-                prm.add_endRequest(EndRequest);
+            var PageRequestManager = Sys.WebForms.PageRequestManager.getInstance();
+            if (!PageRequestManager.get_isInAsyncPostBack()) {
+                PageRequestManager.add_initializeRequest(InitializeRequest);
+                PageRequestManager.add_beginRequest(BeginRequest);
+                PageRequestManager.add_pageLoading(PageLoading);
+                PageRequestManager.add_pageLoaded(PageLoaded);
+                PageRequestManager.add_endRequest(EndRequest);
             }
-            $get('ClientEvents').innerHTML += "APP:: Application init [" + new Date().getTime() + "]. <br/>";
+            LogItem("Application", "Application init");
         }
         function ApplicationLoad(sender, args) {
-            $get('ClientEvents').innerHTML += "APP:: Application load [" + new Date().getTime() + "]. ";
-            $get('ClientEvents').innerHTML += "(isPartialLoad = " + args.get_isPartialLoad() + ")<br/>";
+            LogItem("Application", "Application load");
+            LogItem("Application", "(isPartialLoad = " + args.get_isPartialLoad() + ")");
+
         }
         function ApplicationUnload(sender) {
-            alert('APP:: Application unload.');
+            LogItem("Application", "Application unload");
         }
         function ApplicationDisposing(sender) {
-            $get('ClientEvents').innerHTML += "APP:: Application disposing [" + new Date().getTime() + "]. <br/>";
+            LogItem("Application", "Application disposing");
 
         }
+
         // Application event handlers for page developers.
         function pageLoad() {
-            $get('ClientEvents').innerHTML += "PAGE:: Load [" + new Date().getTime() + "].<br/>";
+            LogItem("Page", "Page Load");
         }
-
         function pageUnload() {
-            alert('Page:: Page unload.');
+            LogItem("Page", "Page unload");
         }
 
+
+        var _gap;
         // PageRequestManager event handlers.
         function InitializeRequest(sender, args) {
             $get('ClientEvents').innerHTML += "<hr/>";
-            $get('ClientEvents').innerHTML += "PRM:: Initializing async request [" + new Date().getTime() + "].<br/>";
+            LogItem("PageRequestManager", "Initializing async request");
+            _gap = StartLog();
         }
+
         function BeginRequest(sender, args) {
-            $get('ClientEvents').innerHTML += "PRM:: Begin processing async request [" + new Date().getTime() + "].<br/>";
+            EndLog(_gap, "Init-Begin");
+            LogItem("PageRequestManager", "Begin processing async request");
+            _gap = StartLog();
         }
+
         function PageLoading(sender, args) {
-            $get('ClientEvents').innerHTML += "PRM:: Loading results of async request [" + new Date().getTime() + "].<br/>";
-            var updatedPanels = printArray("PanelsUpdating", args.get_panelsUpdating());
-            var deletedPanels = printArray("PanelsDeleting", args.get_panelsDeleting());
+            EndLog(_gap, "Begin-Loading");
+            LogItem("PageRequestManager", "Loading results of async request");
 
-            var message = "-->" + updatedPanels + "<br/>-->" + deletedPanels + "<br/>";
+            var updatingPanels = args.get_panelsUpdating();
+            var deletedPanels = args.get_panelsDeleting();
+            LogItem("PageRequestManager", printArray("PanelsUpdating", updatingPanels));
+            LogItem("PageRequestManager", printArray("PanelsDeleting", deletedPanels));
 
-            document.getElementById("ClientEvents").innerHTML += message;
+            _gap = StartLog();
         }
+
         function PageLoaded(sender, args) {
-            $get('ClientEvents').innerHTML += "PRM:: Finished loading results of async request [" + new Date().getTime() + "].<br/>";
-            var updatedPanels = printArray("PanelsUpdated", args.get_panelsUpdated());
-            var createdPanels = printArray("PaneslCreated", args.get_panelsCreated());
+            EndLog(_gap, "Loading-Loaded");
+            LogItem("PageRequestManager", "Finished loading results of async request");
 
-            var message = "-->" + updatedPanels + "<br/>-->" + createdPanels + "<br/>";
+            var updatedPanels = args.get_panelsUpdated();
+            var createdPanels = args.get_panelsCreated();
+            LogItem("PageRequestManager", printArray("PanelsUpdated", updatedPanels));
+            LogItem("PageRequestManager", printArray("PaneslCreated", createdPanels));
 
-            document.getElementById("ClientEvents").innerHTML += message;
+            _gap = StartLog();
         }
         function EndRequest(sender, args) {
-            $get('ClientEvents').innerHTML += "PRM:: End of async request [" + new Date().getTime() + "].<br/>";
-        }
+            LogItem("PageRequestManager", "End of async request");
 
+        }
 
         function printArray(name, arr) {
             var panels = name + '=' + arr.length;
@@ -139,13 +165,45 @@ var AjaxProfiler = (function () {
         }
     }
 
+    function toggleTimingMode() {
+        timingMode *= -1;
+        LogItem("Log", "Timing Mode " + ((timingMode > 0) ? "Detailed" : "Lite"), true);
+    }
+
+    function LogItem(actor, message, force) {
+        if (timingMode > 0 || force) {
+            var now = new Date();
+            var nowStr = now.getHours() + "-" + now.getMinutes() + "-" + now.getSeconds() + "-" + now.getMilliseconds();
+            $get('ClientEvents').innerHTML += "<div>" +
+            "<div style='width:100px;display:inline;'>" + nowStr + " : </div>" +
+            "<div style='width:100px;display:inline;'>" + actor + " : </div>" +
+            "<div style='width:100px;display:inline;'>" + message + " </div>" +
+            "</div>";
+        }
+    }
+    function StartLog() {
+        return new Date();
+    }
+    function EndLog(pre, message) {
+        var ms = Math.abs(new Date() - pre)
+        $get('ClientEvents').innerHTML += "<div>" +
+            "<div style='width:100px;display:inline;'>" + ms + "ms :  </div>" +
+            "<div style='width:100px;display:inline;'>" + message +
+            "</div>"; ;
+    }
+
+
     return {
+        toggleTimingMode: function () {
+            return toggleTimingMode();
+        },
         clear: function () {
             return clear();
         },
         getInstance: function () {
 
             if (!instantiated) {
+                timingMode = 1;
                 instantiated = initHtml();
                 instantiated = initEvents();
             }
