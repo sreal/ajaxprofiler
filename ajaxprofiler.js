@@ -212,9 +212,6 @@ var AjaxProfiler = (function () {
     };
 })();
 
-
 window.onload = function () {
-    var ajaxprofiler = AjaxProfiler.getInstance(); 
+    //var ajaxprofiler = AjaxProfiler.getInstance(); 
 }
-
-
